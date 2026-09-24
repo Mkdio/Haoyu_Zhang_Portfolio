@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>视频提示词编排器 · Video Prompt Composer</title>
+<style>
+:root{
+  --bg:#08090d; --panel:#12141b; --panel2:#171a23; --line:rgba(255,255,255,.10);
+  --text:#e8e6e1; --muted:#8c909c; --gold:#e6b45c; --teal:#4fd1c5; --violet:#9b8cff;
+  --rose:#ff7a92; --green:#7fd68a; --err:#ff6b6b; --warn:#f2c14e; --ok:#5ad19a;
+  --mono:"Cascadia Mono","Consolas","Menlo",monospace;
+  --sans:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+/* 页面水印：body 平铺背景（纯 CSS，非 fixed/sticky，随文档滚动）。
+   文字：Bilibili:全糖夏季_  —— 百分号编码，改文字时重新编码同一段即可。 */
+body{margin:0;background-color:var(--bg);
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='300'%20height='160'%3E%3Cg%20transform='translate(150,80)%20rotate(-30)'%3E%3Ctext%20x='0'%20y='0'%20text-anchor='middle'%20font-family='sans-serif'%20font-size='15'%20fill='%23ffffff'%20fill-opacity='0.06'%3EBilibili:%E5%85%A8%E7%B3%96%E5%A4%8F%E5%AD%A3_%3C/text%3E%3C/g%3E%3C/svg%3E");
+  background-repeat:repeat;
+  color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+header{padding:18px 22px 14px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;background:var(--bg)}
+h1{margin:0;font-size:19px;letter-spacing:.06em;font-weight:600}
+h1 span{color:var(--gold)}
+h1 em.h1wm{font-style:normal;font-size:11px;font-weight:400;letter-spacing:.06em;color:var(--muted);opacity:.7;margin-left:9px}
+.tagline{color:var(--muted);font-size:12px;letter-spacing:.04em}
+main{padding:16px 22px 60px;max-width:1680px;margin:0 auto}
+.cols{display:grid;grid-template-columns:minmax(360px,1fr) minmax(420px,1.25fr);gap:16px;align-items:start}
+@media(max-width:1080px){.cols{grid-template-columns:1fr}}
+section.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px 16px;margin-bottom:14px}
+section.card>h2{margin:0 0 12px;font-size:13px;letter-spacing:.14em;color:var(--gold);font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+section.card>h2 .src{color:var(--muted);font-size:11px;letter-spacing:0;font-weight:400}
+.modebar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.mode{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer;text-align:left;color:var(--text);font-family:var(--sans);transition:.18s}
+.mode:hover{border-color:rgba(230,180,92,.45)}
+.mode.on{border-color:var(--gold);background:linear-gradient(180deg,rgba(230,180,92,.16),rgba(230,180,92,.04))}
+.mode b{display:block;font-size:13.5px;letter-spacing:.06em}
+.mode i{display:block;font-style:normal;color:var(--muted);font-size:11px;margin-top:2px}
+label.f{display:block;margin:10px 0 4px;color:var(--muted);font-size:12px;letter-spacing:.04em}
+label.f b{color:var(--text);font-weight:600}
+input[type=text],input[type=number],textarea,select{
+  width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);
+  padding:7px 9px;font-family:var(--sans);font-size:13px;line-height:1.55;
+}
+textarea{resize:vertical;min-height:64px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:rgba(230,180,92,.55)}
+select{padding:7px 6px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1 1 120px}
+.hint{color:var(--muted);font-size:11.5px;line-height:1.7;margin:6px 0 0}
+.hint code{font-family:var(--mono);font-size:11px;color:var(--teal);background:rgba(79,209,197,.08);padding:1px 4px;border-radius:4px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.chip{border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer;color:var(--text)}
+.chip:hover{border-color:var(--gold);color:var(--gold)}
+.chip.on{border-color:var(--gold);color:var(--gold);background:rgba(230,180,92,.12)}
+button.act{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:7px 13px;font-size:12.5px;cursor:pointer;font-family:var(--sans)}
+button.act:hover{border-color:var(--gold);color:var(--gold)}
+button.act:disabled{opacity:.4;cursor:not-allowed}
+button.primary{border:none;background:linear-gradient(120deg,#f4d38b,var(--gold) 55%,#c9902f);color:#14100a;font-weight:600}
+button.primary:hover{color:#14100a;filter:brightness(1.06)}
+button.tiny{padding:3px 8px;font-size:11.5px;border-radius:6px}
+.shot{border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:10px;background:var(--panel2)}
+.shot.core{border-color:rgba(79,209,197,.28)}
+.shot-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.shot-h b{font-family:var(--mono);color:var(--teal);font-size:13px;letter-spacing:.04em}
+.shot-h .grow{flex:1}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.blk{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:8px;padding:9px 10px;margin-bottom:8px;background:rgba(255,255,255,.02)}
+.blk.action{border-left-color:var(--teal)}
+.blk.dialogue{border-left-color:var(--violet)}
+.blk.sound{border-left-color:var(--gold)}
+.blk-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.blk .id{font-family:var(--mono);color:var(--violet);font-size:12px}
+.blk textarea{min-height:56px}
+.blk-h .id{font-family:var(--mono);color:var(--violet);font-size:12px}
+.pill{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--muted)}
+.pill.ok{border-color:rgba(90,209,154,.5);color:var(--ok)}
+.pill.warn{border-color:rgba(242,193,78,.5);color:var(--warn)}
+.pill.err{border-color:rgba(255,107,107,.5);color:var(--err)}
+.ref{border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin-bottom:8px;background:var(--panel2)}
+.ref-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.ref-h b{font-family:var(--mono);color:var(--gold);font-size:12.5px}
+.checks{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.checks label{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text);cursor:pointer}
+.checks input{accent-color:var(--gold)}
+pre.out{background:#0b0d12;border:1px solid var(--line);border-radius:10px;padding:12px;font-family:var(--mono);font-size:12px;line-height:1.75;white-space:pre-wrap;word-break:break-word;margin:0;color:#dfe3ea}
+.vlist{list-style:none;padding:0;margin:8px 0 0;font-size:12.5px}
+.vlist li{padding:5px 8px;border-radius:6px;margin-bottom:4px;border-left:3px solid var(--line);background:rgba(255,255,255,.02)}
+.vlist li.e{border-left-color:var(--err);color:#ffc9c9}
+.vlist li.w{border-left-color:var(--warn);color:#ffe6b0}
+.vlist li.i{border-left-color:var(--teal);color:#bfeee8}
+details.rules{margin-top:10px}
+details.rules summary{cursor:pointer;color:var(--muted);font-size:12px}
+details.rules div{color:var(--muted);font-size:12px;line-height:1.85;margin-top:8px}
+details.rules code{font-family:var(--mono);color:var(--teal);font-size:11px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>视频提示词<span>编排器</span><em class="h1wm">Bilibili:全糖夏季_</em></h1>
+  <span class="tagline">T2VA · I2VA · FL2VA · L2VA · Full-Reference ｜ 中文书写版：固定参数英文、描述性文字中文 ｜ 离线单文件</span>
+</header>
+<main>
+  <div id="modebar" class="modebar"></div>
+  <div class="cols">
+    <div>
+      <section class="card" id="panel-params"></section>
+      <section class="card" id="panel-refs"></section>
+      <section class="card" id="panel-fr"></section>
+      <section class="card" id="panel-sound"></section>
+    </div>
+    <div>
+      <section class="card" id="panel-shots"></section>
+      <section class="card" id="panel-output"></section>
+    </div>
+  </div>
+</main>
+<script>
+(function(){
+'use strict';
+
+/* ══════════════════════════════════════════════════════════════════════════
+   规范来源（不得增删枚举值）
+   base-en.txt   → T2VA / I2VA / FL2VA / L2VA 权威规范
+   ref-en.txt    → Full-Reference 权威规范
+   shot-size.txt → 用户自定义 UI 扩展（景别词表）
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 规范层：base-en.txt ── */
+var STYLES = ['Cinematic','live-action','2D-animated','3D CG','claymation','watercolor','vintage film']; // base-en.txt:78
+
+var MOTIONS = [ // base-en.txt:100-115
+  {id:'Zoom In',            zh:'推焦距，机身不动',      verb:'zooms in',                          dims:true},
+  {id:'Zoom Out',           zh:'拉焦距，机身不动',      verb:'zooms out',                         dims:true},
+  {id:'Push In',            zh:'机身向前推',            verb:'pushes in',                         dims:true},
+  {id:'Pull Out',           zh:'机身向后退',            verb:'pulls out',                         dims:true},
+  {id:'Pan Left',           zh:'原地水平左摇',          verb:'pans left',                         dims:true},
+  {id:'Pan Right',          zh:'原地水平右摇',          verb:'pans right',                        dims:true},
+  {id:'Truck Left',         zh:'水平左移',              verb:'trucks left',                       dims:true},
+  {id:'Truck Right',        zh:'水平右移',              verb:'trucks right',                      dims:true},
+  {id:'Tilt Up',            zh:'原地垂直上摇',          verb:'tilts up',                          dims:true},
+  {id:'Tilt Down',          zh:'原地垂直下摇',          verb:'tilts down',                        dims:true},
+  {id:'Pedestal Up',        zh:'整机上升',              verb:'pedestals up',                      dims:true},
+  {id:'Pedestal Down',      zh:'整机下降',              verb:'pedestals down',                    dims:true},
+  {id:'Arc Shot',           zh:'绕主体弧线运动',        verb:'moves in an arc around the subject',dims:true},
+  {id:'Tracking Shot',      zh:'跟随运动主体',          verb:'tracks the subject',                dims:true},
+  {id:'Static Shot',        zh:'机位与镜头均不动',      verb:'holds a static shot',               dims:false},
+  {id:'Shake Slightly',     zh:'轻微晃动',              verb:'shakes slightly',                   dims:false},
+  {id:'Shake Strongly',     zh:'强烈晃动',              verb:'shakes strongly',                   dims:false},
+  {id:'POV',                zh:'主体视角',              verb:"adopts the subject's point of view",dims:false},
+  {id:'Roll Clockwise',     zh:'绕镜头轴顺时针滚转',    verb:'rolls clockwise',                   dims:true},
+  {id:'Roll Counterclockwise',zh:'绕镜头轴逆时针滚转',  verb:'rolls counterclockwise',            dims:true}
+];
+var AMPLITUDES = [{id:'small',out:'with small amplitude'},{id:'large',out:'with large amplitude'}]; // base-en.txt:112-113
+var SPEEDS     = [{id:'slow',out:'at slow speed'},{id:'fast',out:'at fast speed'}];                 // base-en.txt:114-115
+
+var CUTS = [ // base-en.txt:92（前五条为常规切；后三条仅用户明确要求时使用）
+  {id:'the camera cuts to',       zh:'常规切（推荐）'},
+  {id:'the shot cuts to',         zh:'常规切'},
+  {id:'the shot transitions to',  zh:'常规切'},
+  {id:'the shot changes to',      zh:'常规切'},
+  {id:'the shot switches to',     zh:'常规切'},
+  {id:'the shot cross-dissolves to', zh:'需用户明确要求'},
+  {id:'the shot fades to',        zh:'需用户明确要求'},
+  {id:'the shot wipes to',        zh:'需用户明确要求'}
+];
+
+/* ── 规范层：ref-en.txt ── */
+var TASK_TYPES  = ['keyframe completion','reference generation','video editing','video continuation','audio reuse','audio reference']; // ref-en.txt:134-139
+var VIS_MARKERS = ['fully_preserved','partially_preserved','attribute_transfer','weak_reference'];  // ref-en.txt:165-168
+var AUD_MARKERS = ['fully_copy','partially_copy','reference','weak_reference'];                    // ref-en.txt:194-197
+var ANCHORS = { // ref-en.txt:251-253
+  start:{en:'the shot begins from {P}',            zh:'起于'},
+  key:  {en:"the shot's keyframe corresponds to {P}", zh:'关键帧对应'},
+  end:  {en:'the shot ends on {P}',                zh:'结束于'}
+};
+
+/* ── 扩展层：shot-size.txt（用户自定义 UI 扩展） ── */
+var SHOT_SIZES = [ // shot-size.txt:10-56
+  {id:'ECU', name:'Extreme Close-Up', output:'extreme close-up'},
+  {id:'CU',  name:'Close-Up',         output:'close-up'},
+  {id:'MCU', name:'Medium Close-Up',  output:'medium close-up'},
+  {id:'MS',  name:'Medium Shot',      output:'medium shot'},
+  {id:'MWS', name:'Medium-Wide Shot', output:'medium-wide shot'},
+  {id:'FS',  name:'Full Shot',        output:'full shot'},
+  {id:'WS',  name:'Wide Shot',        output:'wide shot'},
+  {id:'EWS', name:'Extreme Wide Shot',output:'extreme wide shot'}
+];
+
+/* ── 可视觉化检查词表（离线固定词表，只用于动作/画面块；不是通用形容词检测器） ──
+   ABSTRACT_STATE_WORDS：内部情绪 / 心理 / 态度等镜头拍不到、录不到的抽象状态。
+   VAGUE_MANNER_WORDS：含糊的方式表达，仅作提示，不是错误。
+   VISUAL_EXCEPTIONS：命中即先剔除的良性词组，避免误报。 */
+var ABSTRACT_STATE_WORDS = [
+  /* 需求里点名的 */
+  '生气','愤怒','悲伤','伤心','开心','害怕','恐惧','紧张','焦虑','烦躁','尴尬','羞涩','困惑','无奈','不耐烦','警惕','怀疑','坚定','自信','冷漠','兴奋','激动',
+  /* 同类近义词（可自行增删） */
+  '气愤','恼怒','恼火','难过','高兴','快乐','喜悦','欣喜','惊恐','慌张','担心','担忧','着急','害羞','迷惑','厌烦','嫉妒','愧疚','委屈','沮丧','失落','绝望','欣慰','震惊','惊讶'
+];
+var VAGUE_MANNER_WORDS = [
+  '用力','轻轻','快速','缓慢','慢慢','迅速','渐渐','微微','略微','狠狠','重重','悄悄','默默'
+];
+var VISUAL_EXCEPTIONS = ['生气勃勃','开心果'];
+
+var MODES = [
+  {id:'T2VA',           name:'T2VA',           zh:'无参考图，直接建完整视听时间线'},
+  {id:'I2VA',           name:'I2VA',           zh:'首帧参考：固定对齐指令 + 三核心字段'},
+  {id:'FL2VA',          name:'FL2VA',          zh:'首尾帧参考：首尾对齐指令 + 三核心字段'},
+  {id:'L2VA',           name:'L2VA',           zh:'尾帧参考：尾帧对齐指令 + 三核心字段'},
+  {id:'Full-Reference', name:'Full-Reference', zh:'全参考：六段式改写输出'}
+];
+
+/* ══════════════════════ 状态 ══════════════════════ */
+var LS_KEY = 'vpc-v1';
+
+function appendToken(text, key){
+  text = String(text||'');
+  return text + (text && !/\s$/.test(text) ? ' ' : '') + '<'+key+'>';
+}
+function moveBlock(s, bi, dir){
+  var t = bi + dir;
+  if(t<0 || t>=s.blocks.length) return;
+  var b = s.blocks.splice(bi,1)[0];
+  s.blocks.splice(t,0,b);
+  save(); renderAll();
+}
+function newShot(){
+  return {size:'',motion:'',amp:'',speed:'',camTiming:'through',cut:'the camera cuts to',
+          cutTime:'',cutState:'none',cutConfirmed:false,
+          onscreen:'',refs:[],anchor:'',anchorPic:'',
+          blocks:[newBlock('action')]};
+}
+function newBlock(type){
+  if(type==='action') return {type:'action',text:''};
+  if(type==='sound')  return {type:'sound',text:''};
+  return {type:'dialogue',who:'',identity:'',delivery:'',lang:'Chinese',content:'',
+          offscreen:false,vo:false,cutoff:false,scenetrans:false,joint:[]};
+}
+/* 旧存档迁移：s.text / s.diegetic / s.speakers → 时间线块（按旧编译顺序搬运，不丢数据） */
+function migrateShot(s){
+  if(!s.camTiming) s.camTiming = 'through';      /* 新增镜头级选项，旧数据取默认值 */
+  if(Array.isArray(s.blocks)){
+    s.blocks.forEach(function(b){ if(b && b.type!=='dialogue'){ b.text = b.text || ''; } });
+    delete s.text; delete s.diegetic; delete s.speakers;
+    return s;
+  }
+  var blocks = [];
+  if((s.text||'').trim()) blocks.push({type:'action', text:s.text});
+  if((s.diegetic||'').trim()) blocks.push({type:'sound', text:s.diegetic});
+  (s.speakers||[]).forEach(function(sp){
+    blocks.push({type:'dialogue',who:sp.who||'',identity:sp.identity||'',delivery:sp.delivery||'',
+      lang:sp.lang||'Chinese',content:sp.content||'',offscreen:!!sp.offscreen,vo:!!sp.vo,
+      cutoff:!!sp.cutoff,scenetrans:!!sp.scenetrans,joint:sp.joint||[]});
+  });
+  if(!blocks.length) blocks.push(newBlock('action'));
+  s.blocks = blocks;
+  delete s.text; delete s.diegetic; delete s.speakers;
+  return s;
+}
+function newRef(kind){
+  return {kind:kind,def:'',inlineOnly:false,
+          marker:(kind==='audio'?'reference':'fully_preserved'),note:'',
+          picRole:'first',picShot:1,picShotB:2,
+          videoParen:'cut and pacing structure',bindSpeaker:''};
+}
+function defaultState(){
+  return {
+    mode:'T2VA',
+    duration:'8.00',
+    styles:[],
+    shots:[newShot()],
+    soundscape:'', silent:false,
+    music:'', noMusic:false,
+    fr:{refs:[], summaryTypes:[], summaryText:'', styleLines:''}
+  };
+}
+var state = defaultState();
+try{
+  var saved = localStorage.getItem(LS_KEY);
+  if(saved){
+    var p = JSON.parse(saved);
+    if(p && p.mode && p.shots) state = Object.assign(defaultState(), p);
+  }
+}catch(e){}
+state.shots = (state.shots || []).map(migrateShot);
+if(!state.shots.length) state.shots = [newShot()];
+
+var saveTimer = null;
+function save(){
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){}
+  }, 250);
+}
+
+/* ══════════════════════ DOM 工具 ══════════════════════ */
+function h(tag, attrs){
+  var n = document.createElement(tag);
+  if(attrs) for(var k in attrs){
+    var v = attrs[k];
+    if(v===null || v===undefined || v===false) continue;
+    if(k==='class') n.className = v;
+    else if(k==='text') n.textContent = v;
+    else if(k==='html') n.innerHTML = v;
+    else if(k==='value') n.value = v;
+    else if(k==='checked') n.checked = !!v;
+    else if(k.indexOf('on')===0 && typeof v==='function') n.addEventListener(k.slice(2).toLowerCase(), v);
+    else n.setAttribute(k, v===true ? '' : v);
+  }
+  for(var i=2;i<arguments.length;i++){
+    var c = arguments[i];
+    if(c===null || c===undefined || c===false) continue;
+    if(Array.isArray(c)){ c.forEach(function(x){ if(x!==null&&x!==undefined&&x!==false) n.appendChild(typeof x==='string'?document.createTextNode(x):x); }); }
+    else n.appendChild(typeof c==='string' ? document.createTextNode(c) : c);
+  }
+  return n;
+}
+function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+function opt(v,label,sel){ return h('option',{value:v,text:label,selected:(sel===v)}); }
+
+/* ══════════════════════ 时间工具 ══════════════════════ */
+function parseTime(str){
+  if(str===null || str===undefined) return null;
+  var s = String(str).trim();
+  if(!s) return null;
+  var m = /^(\d+):(\d{1,2})(?:\.(\d{1,3}))?$/.exec(s);
+  if(m) return (+m[1])*60 + (+m[2]) + (m[3] ? parseFloat('0.'+m[3]) : 0);
+  m = /^(\d+(?:\.\d+)?)$/.exec(s);
+  if(m) return parseFloat(m[1]);
+  return null;
+}
+function fmtTime(sec){
+  if(sec===null || sec===undefined || isNaN(sec)) return '';
+  var ms = Math.round(sec*1000);
+  var m = Math.floor(ms/60000), r = ms%60000, s = Math.floor(r/1000), mm = r%1000;
+  return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+'.'+String(mm).padStart(3,'0');
+}
+function durationSec(){ var v = parseFloat(state.duration); return isNaN(v) ? null : v; }
+function duration2dp(){ var v = durationSec(); return v===null ? '' : v.toFixed(2); }
+
+/* ══════════════════════ 渲染：模式 ══════════════════════ */
+var modebar = document.getElementById('modebar');
+function renderModeBar(){
+  clear(modebar);
+  MODES.forEach(function(m){
+    modebar.appendChild(h('button',{class:'mode'+(state.mode===m.id?' on':''), type:'button',
+      onclick:function(){ state.mode=m.id; save(); renderAll(); }},
+      h('b',{text:m.name}), h('i',{text:m.zh})));
+  });
+}
+
+/* ══════════════════════ 渲染：参数 ══════════════════════ */
+var panelParams = document.getElementById('panel-params');
+var panelRefs   = document.getElementById('panel-refs');
+var panelFr     = document.getElementById('panel-fr');
+var panelSound  = document.getElementById('panel-sound');
+var panelShots  = document.getElementById('panel-shots');
+var panelOutput = document.getElementById('panel-output');
+
+function renderParams(){
+  clear(panelParams);
+  panelParams.appendChild(h('h2',{}, '基本参数', h('span',{class:'src',text:'总时长 base-en.txt:34 · 风格 base-en.txt:78'})));
+
+  panelParams.appendChild(h('label',{class:'f'}, h('b',{text:'总时长（秒，两位小数）'}), ' —— 用于对齐指令与切点校验'));
+  panelParams.appendChild(h('input',{type:'number',step:'0.01',min:'0',value:state.duration,
+    oninput:function(e){ state.duration=e.target.value; save(); updateOutput(); }}));
+  panelParams.appendChild(h('p',{class:'hint',text:'对齐指令里会格式化为 S.SS（两位小数），例：8.00-second mark。'}));
+
+  if(state.mode==='Full-Reference'){
+    panelParams.appendChild(h('label',{class:'f'}, h('b',{text:'风格句（写在 [Shot 1] 之前）'}),
+      ' —— ref-en.txt:230 要求风格在 [Shot 1] 之前用一两句交代'));
+    panelParams.appendChild(h('textarea',{value:state.fr.styleLines,placeholder:'例：本片为实拍电影感风格，柔和光线、低饱和色调，手持有轻微呼吸感。',
+      oninput:function(e){ state.fr.styleLines=e.target.value; save(); updateOutput(); }}));
+  }else{
+    panelParams.appendChild(h('label',{class:'f'}, h('b',{text:'视觉风格（可多选）'}), ' —— 写在 [Shot 1] 开头'));
+    var box = h('div',{class:'checks'});
+    STYLES.forEach(function(s){
+      box.appendChild(h('label',{}, h('input',{type:'checkbox',checked:state.styles.indexOf(s)>=0,
+        onchange:function(e){
+          if(e.target.checked){ if(state.styles.indexOf(s)<0) state.styles.push(s); }
+          else state.styles = state.styles.filter(function(x){return x!==s;});
+          save(); updateOutput();
+        }}), s));
+    });
+    panelParams.appendChild(box);
+  }
+  renderRefs();
+}
+
+/* ══════════════════════ 渲染：参考槽（base 模式） ══════════════════════ */
+function renderRefs(){
+  clear(panelRefs);
+  if(state.mode==='Full-Reference'){
+    panelRefs.appendChild(h('h2',{},'参考素材', h('span',{class:'src',text:'ref-en.txt:30-33 标签 · :110 独立编号'})));
+    panelRefs.appendChild(h('p',{class:'hint',text:'全参考模式请到下方「参考登记」维护 Subject / Picture / Video / Audio。'}));
+    return;
+  }
+  panelRefs.appendChild(h('h2',{},'参考素材', h('span',{class:'src',text:'编号由模式与模板决定'})));
+  var rows = [];
+  if(state.mode==='I2VA') rows = [['首帧参考','<Picture 1>','base-en.txt:19（定值，不可改）']];
+  if(state.mode==='FL2VA') rows = [['首帧参考','Picture 1','base-en.txt:25（定值）'],['尾帧参考','Picture 2','base-en.txt:25（定值）']];
+  if(state.mode==='L2VA') rows = [['尾帧参考','<Picture 1>','base-en.txt:31（定值）']];
+  if(state.mode==='T2VA'){
+    panelRefs.appendChild(h('p',{class:'hint',text:'T2VA 不使用任何参考图，也不生成对齐指令（base-en.txt:14）。'}));
+    return;
+  }
+  rows.forEach(function(r){
+    panelRefs.appendChild(h('div',{class:'ref'},
+      h('div',{class:'ref-h'}, h('b',{text:r[1]}), h('span',{class:'pill',text:r[0]})),
+      h('p',{class:'hint',text:'标签固定：'+r[2]})));
+  });
+  panelRefs.appendChild(h('p',{class:'hint',text:'指令行由模式自动生成、逐字照抄规范模板（含破折号与标点），首行后空一行再接三核心字段（base-en.txt:34）。'}));
+}
+
+/* ══════════════════════ 渲染：FR 参考登记 ══════════════════════ */
+function labelList(){
+  var counters = {subject:0,picture:0,video:0,audio:0};
+  var names = {subject:'Subject',picture:'Picture',video:'Video',audio:'Audio'};
+  return state.fr.refs.map(function(e){
+    counters[e.kind]++;
+    var key = names[e.kind]+' '+counters[e.kind];
+    return {key:key, kind:e.kind, entry:e, label:'<'+key+'>'};
+  });
+}
+function dialogueBlocks(s){ return (s.blocks||[]).filter(function(b){ return b.type==='dialogue'; }); }
+function speakersOfShot(s){
+  var seen = {}, out = [];
+  dialogueBlocks(s).forEach(function(sp){ if(sp.who && !seen[sp.who]){ seen[sp.who]=1; out.push(sp.who); } });
+  return out;
+}
+function speakerMap(){
+  var map = {}, n = 0;
+  state.shots.forEach(function(s){
+    dialogueBlocks(s).forEach(function(sp){
+      var who = (sp.who||'').trim();
+      if(!who || !sp.content) return;
+      if(!(who in map)) map[who] = 'S'+(++n);
+    });
+  });
+  return map;
+}
+
+function renderFr(){
+  clear(panelFr);
+  panelFr.style.display = (state.mode==='Full-Reference') ? '' : 'none';
+  if(state.mode!=='Full-Reference') return;
+
+  panelFr.appendChild(h('h2',{},'参考登记', h('span',{class:'src',text:'ref-en.txt:24-119, 155-207'})));
+
+  var bar = h('div',{class:'chips'});
+  [['subject','+ Subject'],['picture','+ Picture'],['video','+ Video'],['audio','+ Audio']].forEach(function(p){
+    bar.appendChild(h('button',{class:'chip',type:'button',onclick:function(){
+      state.fr.refs.push(newRef(p[0])); save(); renderAll();
+    }}, p[1]));
+  });
+  panelFr.appendChild(bar);
+
+  var labels = labelList();
+  var names = {subject:'Subject',picture:'Picture',video:'Video',audio:'Audio'};
+  if(!labels.length) panelFr.appendChild(h('p',{class:'hint',text:'尚未登记参考。全参考模式至少要有一条参考，否则 subject_definitions 与 retention_analysis 为空。'}));
+
+  labels.forEach(function(L, idx){
+    var e = L.entry;
+    var card = h('div',{class:'ref'});
+    var head = h('div',{class:'ref-h'}, h('b',{text:L.label}), h('span',{class:'pill',text:names[e.kind]}));
+    if(e.kind==='audio') head.appendChild(h('span',{class:'pill',text:'音频保留度'}));
+    head.appendChild(h('span',{class:'grow',style:'flex:1'}));
+    head.appendChild(h('button',{class:'act tiny',type:'button',onclick:function(){
+      state.fr.refs.splice(idx,1); save(); renderAll();
+    }},'删除'));
+    card.appendChild(head);
+
+    card.appendChild(h('label',{class:'f'},'定义正文（中文；标签由系统给出，勿手写标签编号）'));
+    card.appendChild(h('textarea',{value:e.def,
+      placeholder:(e.kind==='subject'?'例：是 <Picture 1> 中的年轻女性，黑色长直发、浅蓝开衫、细银项链。'
+        : e.kind==='picture'?'例：是 [Shot 1] 的首帧，咖啡馆窗边的座位。'
+        : e.kind==='video'?'例：是目标视频剪辑的源视频。'
+        : '例：是 <Subject 1> (S1) 的音色参考，含普通话人声层。'),
+      oninput:function(ev){ e.def=ev.target.value; save(); updateOutput(); }}));
+
+    if(e.kind==='subject' || e.kind==='picture' || e.kind==='video'){
+      card.appendChild(h('label',{class:'f'},'保留度标记'));
+      var msel = h('select',{onchange:function(ev){ e.marker=ev.target.value; save(); updateOutput(); }});
+      VIS_MARKERS.forEach(function(m){ msel.appendChild(opt(m,m,e.marker)); });
+      card.appendChild(msel);
+
+      if(e.kind==='picture'){
+        var g = h('div',{class:'row'});
+        var roleSel = h('select',{onchange:function(ev){ e.picRole=ev.target.value; save(); renderAll(); }});
+        [['first','首帧'],['key','关键帧'],['last','尾帧'],['storyboard','分镜参考']].forEach(function(r){ roleSel.appendChild(opt(r[0],r[1],e.picRole)); });
+        g.appendChild(h('div',{}, h('label',{class:'f'},'角色'), roleSel));
+        g.appendChild(h('div',{}, h('label',{class:'f'},'镜次'), h('input',{type:'number',min:'1',value:e.picShot,
+          oninput:function(ev){ e.picShot=parseInt(ev.target.value||'1',10); save(); updateOutput(); }})));
+        if(e.picRole==='storyboard'){
+          g.appendChild(h('div',{}, h('label',{class:'f'},'第二个镜次'), h('input',{type:'number',min:'1',value:e.picShotB,
+            oninput:function(ev){ e.picShotB=parseInt(ev.target.value||'1',10); save(); updateOutput(); }})));
+        }
+        card.appendChild(g);
+      }
+      if(e.kind==='video'){
+        card.appendChild(h('label',{class:'f'},'括注（默认取规范示例 cut and pacing structure）'));
+        card.appendChild(h('input',{type:'text',value:e.videoParen,
+          oninput:function(ev){ e.videoParen=ev.target.value; save(); updateOutput(); }}));
+      }
+      card.appendChild(h('label',{class:'f'},'说明（中文，写在保留度标记的 “ - ” 之后）'));
+      card.appendChild(h('input',{type:'text',value:e.note,
+        oninput:function(ev){ e.note=ev.target.value; save(); updateOutput(); }}));
+    }else{
+      card.appendChild(h('label',{class:'f'},'音频保留度标记'));
+      var asel = h('select',{onchange:function(ev){ e.marker=ev.target.value; save(); updateOutput(); }});
+      AUD_MARKERS.forEach(function(m){ asel.appendChild(opt(m,m,e.marker)); });
+      card.appendChild(asel);
+
+      var smap = speakerMap();
+      var who = Object.keys(smap);
+      var bsel = h('select',{onchange:function(ev){ e.bindSpeaker=ev.target.value; save(); updateOutput(); }});
+      bsel.appendChild(opt('','— 不绑定说话人 —',''));
+      who.forEach(function(w){ bsel.appendChild(opt(w, w+' ('+smap[w]+')', e.bindSpeaker)); });
+      card.appendChild(h('label',{class:'f'},'绑定说话人（可选，复用全局 (Sx)，不新分配：ref-en.txt:100,278）'));
+      card.appendChild(bsel);
+
+      card.appendChild(h('label',{class:'f'},'说明（中文，标记后 “ - ” 之后）'));
+      card.appendChild(h('input',{type:'text',value:e.note,
+        oninput:function(ev){ e.note=ev.target.value; save(); updateOutput(); }}));
+    }
+
+    if(e.kind==='picture' || e.kind==='video'){
+      card.appendChild(h('div',{class:'checks'},
+        h('label',{}, h('input',{type:'checkbox',checked:e.inlineOnly,onchange:function(ev){
+          e.inlineOnly=ev.target.checked; save(); renderAll();
+        }}), '仅在其它定义里引用，不单独成行（ref-en.txt:37）')));
+    }
+    panelFr.appendChild(card);
+  });
+
+  /* summary */
+  panelFr.appendChild(h('h2',{style:'margin-top:16px'},'summary', h('span',{class:'src',text:'ref-en.txt:121-153'})));
+  panelFr.appendChild(h('label',{class:'f'}, h('b',{text:'任务类型（可多选，自动用 “ + ” 连接、不重复）'})));
+  var tbox = h('div',{class:'checks'});
+  TASK_TYPES.forEach(function(t){
+    tbox.appendChild(h('label',{}, h('input',{type:'checkbox',checked:state.fr.summaryTypes.indexOf(t)>=0,
+      onchange:function(ev){
+        if(ev.target.checked){ if(state.fr.summaryTypes.indexOf(t)<0) state.fr.summaryTypes.push(t); }
+        else state.fr.summaryTypes = state.fr.summaryTypes.filter(function(x){return x!==t;});
+        save(); renderAll();
+      }}), t));
+  });
+  panelFr.appendChild(tbox);
+  if(state.fr.summaryTypes.indexOf('video editing')>=0){
+    panelFr.appendChild(h('p',{class:'hint'},'已选 video editing：系统会自动在段落开头插入规范固定英文句 ',
+      h('code',{text:'The target video is an edited version of <Video 1>.'}), '（ref-en.txt:149-153）'));
+  }
+  panelFr.appendChild(h('label',{class:'f'}, h('b',{text:'summary 段落（中文；使用已定义的标签，不新增标签）'})));
+  panelFr.appendChild(h('textarea',{value:state.fr.summaryText,style:'min-height:80px',
+    placeholder:'例：目标视频展示 <Subject 3> 在 <Subject 1> 里吃饼干，<Subject 4> 带着 <Subject 2> 进入，狗扑向饼干。',
+    oninput:function(ev){ state.fr.summaryText=ev.target.value; save(); updateOutput(); }}));
+}
+
+/* ══════════════════════ 渲染：声音 ══════════════════════ */
+function renderSound(){
+  clear(panelSound);
+  panelSound.appendChild(h('h2',{},'声音字段', h('span',{class:'src',text:'base-en.txt:152-166'})));
+  panelSound.appendChild(h('label',{class:'f'}, h('b',{text:'overall_soundscape'}), ' —— 1–4 句，环境声与物理动作声、非语言人声'));
+  panelSound.appendChild(h('textarea',{value:state.soundscape,
+    placeholder:'例：雨点持续敲打咖啡馆窗户，室内低度环境声垫在下方。',
+    oninput:function(e){ state.soundscape=e.target.value; save(); updateOutput(); }}));
+  panelSound.appendChild(h('div',{class:'checks'},
+    h('label',{}, h('input',{type:'checkbox',checked:state.silent,onchange:function(e){
+      state.silent=e.target.checked; save(); renderAll();
+    }}), '用户明确要求全片静音 → 输出 N/A')));
+  if(state.silent) panelSound.appendChild(h('p',{class:'hint',text:'base-en.txt:154：只有用户明确要求全片静音时才可用 N/A。'}));
+
+  panelSound.appendChild(h('label',{class:'f'}, h('b',{text:'non_diegetic_music'}), ' —— 1–3 句，只有观众能听到的配乐'));
+  panelSound.appendChild(h('textarea',{value:state.music,
+    placeholder:'例：缓慢的稀疏钢琴音符，随后加入持续低音弦乐并逐渐增强。',
+    oninput:function(e){ state.music=e.target.value; save(); updateOutput(); }}));
+  panelSound.appendChild(h('div',{class:'checks'},
+    h('label',{}, h('input',{type:'checkbox',checked:state.noMusic,onchange:function(e){
+      state.noMusic=e.target.checked; save(); renderAll();
+    }}), '无观众向配乐 → 输出 N/A')));
+  panelSound.appendChild(h('p',{class:'hint',text:'角色能听到的音乐（唱歌、乐器、收音机、电视、手机）属于叙事内事件，写进镜头正文，不写在这里。'}));
+}
+
+/* ══════════════════════ 渲染：镜头编辑器 ══════════════════════ */
+var insertTarget = null;
+function renderShots(){
+  clear(panelShots);
+  var fr = (state.mode==='Full-Reference');
+  panelShots.appendChild(h('h2',{},'镜头编辑器（全模式共用）',
+    h('span',{class:'src',text:'base-en.txt:84-123' + (fr?' · ref-en.txt:209-278':'')})));
+
+  state.shots.forEach(function(s, i){
+    var card = h('div',{class:'shot'+(i===0?' core':'')});
+
+    var head = h('div',{class:'shot-h'}, h('b',{text:'[Shot '+(i+1)+']'}));
+    if(i>0){
+      var t = parseTime(s.cutTime);
+      var st = s.cutState;
+      var cls = (t===null) ? 'err' : ((st==='auto' && !s.cutConfirmed) ? 'warn' : 'ok');
+      var txt = (t===null) ? '切点未设置' : ((st==='auto' && !s.cutConfirmed) ? '切点待确认' : '切点已确认');
+      head.appendChild(h('span',{class:'pill '+cls,text:txt}));
+    }else{
+      head.appendChild(h('span',{class:'pill',text:'首镜无时间戳'}));
+    }
+    head.appendChild(h('span',{class:'grow',style:'flex:1'}));
+    head.appendChild(h('button',{class:'act tiny',type:'button',disabled:(i===0),onclick:function(){
+      var a = state.shots.splice(i,1)[0]; state.shots.splice(i-1,0,a); save(); renderAll();
+    }},'↑'));
+    head.appendChild(h('button',{class:'act tiny',type:'button',disabled:(i===state.shots.length-1),onclick:function(){
+      var a = state.shots.splice(i,1)[0]; state.shots.splice(i+1,0,a); save(); renderAll();
+    }},'↓'));
+    head.appendChild(h('button',{class:'act tiny',type:'button',disabled:(state.shots.length<=1),onclick:function(){
+      state.shots.splice(i,1); if(!state.shots.length) state.shots.push(newShot()); save(); renderAll();
+    }},'删除'));
+    card.appendChild(head);
+
+    if(i>0){
+      var g0 = h('div',{class:'row'});
+      g0.appendChild(h('div',{}, h('label',{class:'f'},'切点时间（MM:SS.mmm，也可直接写秒数）'),
+        h('input',{type:'text',value:s.cutTime,placeholder:'00:03.500',
+          oninput:function(e){
+            s.cutTime = e.target.value;
+            if(parseTime(s.cutTime)!==null){ s.cutState='manual'; s.cutConfirmed=true; }
+            else { s.cutState='none'; s.cutConfirmed=false; }
+            save(); refreshCutPill(card, s, i); updateOutput();
+          }})));
+      g0.appendChild(h('div',{}, h('label',{class:'f'},'切法措辞（base-en.txt:92）'),
+        (function(){
+          var sel = h('select',{onchange:function(e){ s.cut=e.target.value; save(); updateOutput(); }});
+          CUTS.forEach(function(c){ sel.appendChild(opt(c.id, c.id+(c.zh?' ｜ '+c.zh:''), s.cut)); });
+          return sel;
+        })()));
+      card.appendChild(g0);
+      if(s.cutState==='auto' && !s.cutConfirmed){
+        card.appendChild(h('div',{class:'checks'},
+          h('label',{}, h('input',{type:'checkbox',checked:false,onchange:function(e){
+            s.cutConfirmed = e.target.checked; save(); renderAll();
+          }}), '确认该切点（均分助手填入的值必须逐一确认）')));
+      }
+    }
+
+    var g1 = h('div',{class:'grid3'});
+    g1.appendChild(h('div',{}, h('label',{class:'f'},'景别（shot-size.txt 扩展层）'),
+      (function(){
+        var sel = h('select',{onchange:function(e){ s.size=e.target.value; save(); updateOutput(); }});
+        sel.appendChild(opt('','— 未指定 —',''));
+        SHOT_SIZES.forEach(function(z){ sel.appendChild(opt(z.id, '['+z.id+'] — '+z.name, s.size)); });
+        return sel;
+      })()));
+    g1.appendChild(h('div',{}, h('label',{class:'f'},'运镜（base-en.txt:100-111）'),
+      (function(){
+        var sel = h('select',{onchange:function(e){ s.motion=e.target.value; save(); renderAll(); }});
+        sel.appendChild(opt('','— 无运镜 —',''));
+        MOTIONS.forEach(function(m){ sel.appendChild(opt(m.id, m.id+' ｜ '+m.zh, s.motion)); });
+        return sel;
+      })()));
+    var md = MOTIONS.filter(function(m){ return m.id===s.motion; })[0];
+    var dims = !!(md && md.dims);
+    g1.appendChild(h('div',{}, h('label',{class:'f'},'幅度（可留空）'),
+      (function(){
+        var sel = h('select',{disabled:!dims,onchange:function(e){ s.amp=e.target.value; save(); updateOutput(); }});
+        sel.appendChild(opt('','— 省略 —',''));
+        AMPLITUDES.forEach(function(a){ sel.appendChild(opt(a.id, a.out, s.amp)); });
+        return sel;
+      })()));
+    g1.appendChild(h('div',{}, h('label',{class:'f'},'速度（可留空）'),
+      (function(){
+        var sel = h('select',{disabled:!dims,onchange:function(e){ s.speed=e.target.value; save(); updateOutput(); }});
+        sel.appendChild(opt('','— 省略 —',''));
+        SPEEDS.forEach(function(a){ sel.appendChild(opt(a.id, a.out, s.speed)); });
+        return sel;
+      })()));
+    g1.appendChild(h('div',{}, h('label',{class:'f'},'运镜时机（镜头级）'),
+      (function(){
+        var cur = s.camTiming || 'through';
+        var sel = h('select',{disabled:!s.motion,onchange:function(e){ s.camTiming=e.target.value; save(); renderAll(); }});
+        sel.appendChild(opt('through','贯穿全镜（默认）',cur));
+        sel.appendChild(opt('after','接在动作描述之后',cur));
+        return sel;
+      })()));
+    card.appendChild(g1);
+    card.appendChild(h('p',{class:'hint',text:'中等幅度与常速通常省略，只在有意义时写（base-en.txt:96）。' + (dims?'':' 当前运镜类型不使用幅度/速度。')
+      + (s.motion ? (s.camTiming==='after'
+          ? ' 运镜时机：接在动作描述之后 → 运镜独立成句排在动作描述后面。'
+          : ' 运镜时机：贯穿全镜 → 写成「The camera … throughout the shot as <动作描述>」，与动作自然衔接。')
+        : ' 未选运镜时该选项不生效。')}));
+
+    card.appendChild(h('div',{class:'row'},
+      h('div',{}, h('label',{class:'f'},'屏上可见文字（镜头级；原样保留，自动加英文双引号）'),
+        h('input',{type:'text',value:s.onscreen,placeholder:'例：营业中',
+          oninput:function(e){ s.onscreen=e.target.value; save(); updateOutput(); }}))));
+
+    /* ── 时间线块：顺序即播放顺序 ── */
+    var blocks = s.blocks || (s.blocks = []);
+    card.appendChild(h('label',{class:'f'}, h('b',{text:'时间线块'}),
+      ' —— 顺序即播放顺序，编译时严格按此顺序输出；不给单个块加时间戳'));
+    blocks.forEach(function(b, bi){
+      var box = h('div',{class:'blk '+b.type});
+      var bh = h('div',{class:'blk-h'},
+        h('span',{class:'pill',text:(b.type==='action'?'动作':(b.type==='dialogue'?'台词':'同期声'))}),
+        h('span',{class:'pill',text:'#'+(bi+1)+'/'+blocks.length}));
+      if(b.type==='dialogue'){
+        var smap0 = speakerMap();
+        bh.appendChild(h('span',{class:'id',text: b.who ? (smap0[b.who]||'（尚未发声）') : '—'}));
+      }
+      bh.appendChild(h('span',{style:'flex:1'}));
+      bh.appendChild(h('button',{class:'act tiny',type:'button',disabled:(bi===0),onclick:function(){ moveBlock(s,bi,-1); }},'↑'));
+      bh.appendChild(h('button',{class:'act tiny',type:'button',disabled:(bi===blocks.length-1),onclick:function(){ moveBlock(s,bi,1); }},'↓'));
+      bh.appendChild(h('button',{class:'act tiny',type:'button',disabled:(blocks.length<=1),onclick:function(){ blocks.splice(bi,1); save(); renderAll(); }},'删除'));
+      box.appendChild(bh);
+
+      if(b.type==='action'){
+        box.appendChild(h('textarea',{value:b.text,placeholder:'例：陈丽睁开眼睛，看向窗户，又躺回枕头并叹气。',
+          oninput:function(e){ b.text=e.target.value; save(); updateOutput(); }}));
+        if(fr && labelList().length){
+          box.appendChild(h('div',{class:'chips'}, labelList().map(function(L){
+            return h('button',{class:'chip',type:'button',onclick:function(){
+              b.text = appendToken(b.text, L.key);
+              if(s.refs.indexOf(L.key)<0) s.refs.push(L.key);
+              save(); renderAll();
+            }}, '<'+L.key+'>');
+          })));
+        }
+      }else if(b.type==='sound'){
+        box.appendChild(h('input',{type:'text',value:b.text,placeholder:'例：方向盘按键的轻响。',
+          oninput:function(e){ b.text=e.target.value; save(); updateOutput(); }}));
+      }else{
+        var g = h('div',{class:'row'});
+        g.appendChild(h('div',{}, h('label',{class:'f'},'角色名（用于跨镜复用同一 (Sx)）'),
+          h('input',{type:'text',value:b.who,placeholder:'例：陈丽',
+            oninput:function(e){ b.who=e.target.value; save(); updateOutput(); }})));
+        g.appendChild(h('div',{}, h('label',{class:'f'},'语言标签'),
+          h('input',{type:'text',value:b.lang,
+            oninput:function(e){ b.lang=e.target.value; save(); updateOutput(); }})));
+        box.appendChild(g);
+
+        box.appendChild(h('label',{class:'f'},'身份与音色（中文，写 ID 之前）'));
+        box.appendChild(h('input',{type:'text',value:b.identity,placeholder:'例：声音轻而带气声的年轻女性',
+          oninput:function(e){ b.identity=e.target.value; save(); updateOutput(); }}));
+        if(fr && labelList().length){
+          box.appendChild(h('div',{class:'chips'}, labelList().map(function(L){
+            return h('button',{class:'chip',type:'button',onclick:function(){
+              b.identity = appendToken(b.identity, L.key);
+              if(s.refs.indexOf(L.key)<0) s.refs.push(L.key);
+              save(); renderAll();
+            }}, '<'+L.key+'>');
+          })));
+        }
+        box.appendChild(h('label',{class:'f'},'语气与节奏（中文，可留空）'));
+        box.appendChild(h('input',{type:'text',value:b.delivery,placeholder:'例：慵懒、平静而略快（不必写「语气」二字）',
+          oninput:function(e){ b.delivery=e.target.value; save(); updateOutput(); }}));
+        box.appendChild(h('label',{class:'f'}, h('b',{text:'台词原文（逐字保留，不翻译、不改写）'})));
+        box.appendChild(h('textarea',{value:b.content,placeholder:'例：我下一站下车。',
+          oninput:function(e){ b.content=e.target.value; save(); updateOutput(); }}));
+
+        var g2b = h('div',{class:'checks'});
+        g2b.appendChild(h('label',{}, h('input',{type:'checkbox',checked:b.offscreen,onchange:function(e){
+          b.offscreen=e.target.checked; save(); updateOutput(); }}), '画外（off-screen）'));
+        g2b.appendChild(h('label',{}, h('input',{type:'checkbox',checked:b.vo,onchange:function(e){
+          b.vo=e.target.checked; save(); updateOutput(); }}), '画外音 voiceover（自动补唇部闭合说明）'));
+        g2b.appendChild(h('label',{}, h('input',{type:'checkbox',checked:b.cutoff,onchange:function(e){
+          b.cutoff=e.target.checked; save(); updateOutput(); }}), '被片尾截断 <cutoff>'));
+        g2b.appendChild(h('label',{}, h('input',{type:'checkbox',checked:b.scenetrans,onchange:function(e){
+          b.scenetrans=e.target.checked; save(); updateOutput(); }}), '跨切点延续 <scenetrans>'));
+        box.appendChild(g2b);
+
+        var others = speakersOfShot(s).filter(function(w){ return w!==b.who; });
+        if(others.length){
+          var jb = h('div',{class:'checks'});
+          jb.appendChild(h('span',{class:'pill',text:'联合发声（复合 ID）'}));
+          others.forEach(function(w){
+            jb.appendChild(h('label',{}, h('input',{type:'checkbox',checked:(b.joint||[]).indexOf(w)>=0,onchange:function(e){
+              b.joint = b.joint || [];
+              if(e.target.checked){ if(b.joint.indexOf(w)<0) b.joint.push(w); }
+              else b.joint = b.joint.filter(function(x){ return x!==w; });
+              save(); renderAll();
+            }}), w));
+          });
+          box.appendChild(jb);
+        }
+      }
+      card.appendChild(box);
+    });
+    card.appendChild(h('div',{class:'bar'},
+      h('button',{class:'act',type:'button',onclick:function(){ blocks.push(newBlock('action')); save(); renderAll(); }},'+ 动作'),
+      h('button',{class:'act',type:'button',onclick:function(){ blocks.push(newBlock('dialogue')); save(); renderAll(); }},'+ 台词'),
+      h('button',{class:'act',type:'button',onclick:function(){ blocks.push(newBlock('sound')); save(); renderAll(); }},'+ 同期声')));
+
+    if(fr){
+      var rbox = h('div',{class:'checks'});
+      var rboxN = 0;
+      labelList().forEach(function(L){
+        if(L.entry.inlineOnly) return;
+        rboxN++;
+        rbox.appendChild(h('label',{}, h('input',{type:'checkbox',checked:s.refs.indexOf(L.key)>=0,
+          onchange:function(e){
+            if(e.target.checked){ if(s.refs.indexOf(L.key)<0) s.refs.push(L.key); }
+            else s.refs = s.refs.filter(function(x){ return x!==L.key; });
+            save(); updateOutput();
+          }}), '<'+L.key+'> 本镜出现'));
+      });
+      if(rboxN){
+        card.appendChild(h('label',{class:'f'},'本镜出现（用于自动推导 retention_analysis 的镜次）'));
+        card.appendChild(rbox);
+      }
+      var pics = labelList().filter(function(L){ return L.kind==='picture'; });
+      if(pics.length){
+        var ga = h('div',{class:'row'});
+        ga.appendChild(h('div',{}, h('label',{class:'f'},'关键帧锚点句式（ref-en.txt:251-253）'),
+          (function(){
+            var sel = h('select',{onchange:function(e){ s.anchor=e.target.value; save(); renderAll(); }});
+            sel.appendChild(opt('','— 不使用 —',''));
+            ['start','key','end'].forEach(function(k){ sel.appendChild(opt(k, ANCHORS[k].en.replace('{P}','…')+' ｜ '+ANCHORS[k].zh, s.anchor)); });
+            return sel;
+          })()));
+        if(s.anchor){
+          ga.appendChild(h('div',{}, h('label',{class:'f'},'锚定图片'),
+            (function(){
+              var sel = h('select',{onchange:function(e){ s.anchorPic=e.target.value; save(); updateOutput(); }});
+              sel.appendChild(opt('','— 选择 —',''));
+              pics.forEach(function(L){ sel.appendChild(opt(L.key, '<'+L.key+'>', s.anchorPic)); });
+              return sel;
+            })()));
+        }
+        card.appendChild(ga);
+      }
+    }
+
+    panelShots.appendChild(card);
+  });
+
+  var bar = h('div',{class:'bar'});
+  bar.appendChild(h('button',{class:'act',type:'button',onclick:function(){
+    state.shots.push(newShot()); save(); renderAll();
+  }},'+ 加镜头'));
+  bar.appendChild(h('button',{class:'act',type:'button',onclick:function(){
+    var n = state.shots.length;
+    if(n<2) return;
+    var d = durationSec();
+    if(d===null) return;
+    for(var i=1;i<n;i++){
+      state.shots[i].cutTime = fmtTime(d*i/n);
+      state.shots[i].cutState = 'auto';
+      state.shots[i].cutConfirmed = false;
+    }
+    save(); renderAll();
+  }},'均分切点（辅助，填完需确认）'));
+  bar.appendChild(h('button',{class:'act',type:'button',onclick:function(){
+    state.shots.forEach(function(s){ if(s.cutState==='auto') s.cutConfirmed = true; });
+    save(); renderAll();
+  }},'确认全部切点'));
+  panelShots.appendChild(bar);
+  panelShots.appendChild(h('p',{class:'hint',text:'切点时间由你逐镜填写，应用只负责格式化与校验（严格递增、小于总时长）；均分助手只是可选帮手，使用后必须确认。'}));
+}
+function refreshCutPill(card, s, i){
+  var pill = card.querySelector('.shot-h .pill');
+  if(!pill) return;
+  var t = parseTime(s.cutTime);
+  var st = s.cutState;
+  pill.className = 'pill ' + ((t===null) ? 'err' : ((st==='auto' && !s.cutConfirmed) ? 'warn' : 'ok'));
+  pill.textContent = (t===null) ? '切点未设置' : ((st==='auto' && !s.cutConfirmed) ? '切点待确认' : '切点已确认');
+  updateValidate();
+}
+
+/* ══════════════════════ 编译 ══════════════════════ */
+function camPhrase(s){
+  var m = MOTIONS.filter(function(x){ return x.id===s.motion; })[0];
+  if(!m) return '';
+  var t = 'The camera ' + m.verb;
+  if(m.dims){
+    var a = AMPLITUDES.filter(function(x){ return x.id===s.amp; })[0];
+    var sp = SPEEDS.filter(function(x){ return x.id===s.speed; })[0];
+    if(a) t += ' ' + a.out;
+    if(sp) t += ' ' + sp.out;
+  }
+  return t;
+}
+/* 贯穿全镜：沿用规范里的运镜表达原样（含 at slow speed / at fast speed），
+   只在句尾加 throughout the shot，再用 as 连到动作描述。 */
+function camClauseThrough(s){
+  var base = camPhrase(s);
+  if(!base) return '';
+  var m = MOTIONS.filter(function(x){ return x.id===s.motion; })[0];
+  if(m && /static shot$/.test(m.verb)) return base;   /* "static shot throughout the shot" 会重复 */
+  return base + ' throughout the shot';
+}
+/* 语气连接词：只做连接层面的整理，不改写用户用词，只返回状语部分（动词由 speakerBlock 补）。
+   「语气慵懒」→「以慵懒的语气」+「说道」；描述本身已含语气/语速/节奏时用「……地」+「说道」避免重复。 */
+function deliveryTone(d){
+  d = String(d||'').trim();
+  if(!d) return '';
+  var core = d.replace(/^(语气|语速|节奏)\s*[：:，,、]?\s*/, '').trim();
+  if(!core) core = d;
+  if(/语气|语速|节奏/.test(core)) return core + '地';
+  return '以' + core + '的语气';
+}
+function speakerBlock(sp, smap){
+  var ids = [smap[sp.who]];
+  (sp.joint||[]).forEach(function(w){ if(smap[w] && ids.indexOf(smap[w])<0) ids.push(smap[w]); });
+  var idTxt = '(' + ids.join(',') + ')';
+  var head = [];
+  if(sp.identity) head.push(sp.identity);
+  head.push(idTxt);
+  var pre = head.join(' ');
+  var tone = deliveryTone(sp.delivery);
+  var verb = sp.vo ? '以画外音说道: ' : (sp.offscreen ? '画外说道: ' : '说道: ');
+  var t = tone ? (pre + ' ' + tone + verb) : (pre + ' ' + verb);
+  t += '<d>[' + (sp.lang||'Chinese') + '] ' + sp.content + '</d>';
+  if(sp.vo) t += ' 说话时对应画面人物的唇部完全闭合。';
+  if(sp.scenetrans) t += ' <scenetrans>该句跨越切点，音频连续不断';
+  if(sp.cutoff) t += ' <cutoff>';
+  return t;
+}
+function compileShots(){
+  var smap = speakerMap();
+  var fr = (state.mode==='Full-Reference');
+  var out = [];
+  state.shots.forEach(function(s, i){
+    var frag = ['[Shot ' + (i+1) + ']'];
+    if(i>0){
+      var t = parseTime(s.cutTime);
+      if(t!==null) frag.push('At ' + fmtTime(t) + ',');
+      frag.push(s.cut || 'the camera cuts to');
+    }else if(!fr && state.styles.length){
+      frag.push(state.styles.join(', ') + ',');
+    }
+    /* 开场：第一个块若是动作块，由它承接景别短语；其余块严格按列表顺序输出 */
+    var blocks = s.blocks || [];
+    var open = (blocks.length && blocks[0].type==='action') ? blocks[0] : null;
+    var openText = open ? String(open.text||'').trim() : '';
+    var z = s.size ? SHOT_SIZES.filter(function(x){ return x.id===s.size; })[0] : null;
+    var through = (s.camTiming !== 'after') && !!s.motion;
+    if(through){
+      /* 贯穿全镜：景别独立成句，运镜从句以 as 直接连到开场动作描述 */
+      if(i===0){
+        if(z) frag.push(((fr || !state.styles.length) ? 'A ' : 'a ') + z.output + '.');
+      }else{
+        if(z) frag.push('a ' + z.output + '.');
+      }
+      var cl = camClauseThrough(s);
+      if(openText) frag.push(cl + ' as ' + openText);
+      else frag.push(cl + '.');
+    }else{
+      if(i===0){
+        /* 首镜：景别短语直接接开场正文（A close-up frames …） */
+        var art = (fr || !state.styles.length) ? 'A ' : 'a ';
+        if(z && openText) frag.push(art + z.output + ' frames ' + openText);
+        else if(z) frag.push('A ' + z.output + '.');
+        else if(openText) frag.push(openText);
+      }else{
+        /* 后续镜：切法措辞以 to 结尾，景别不能接 frames，必须独立成句 */
+        if(z) frag.push('a ' + z.output + '.');
+        if(openText) frag.push(openText);
+      }
+      var cp = camPhrase(s);
+      if(cp) frag.push(cp + '.');
+    }
+    if(fr && s.anchor && s.anchorPic){
+      frag.push(ANCHORS[s.anchor].en.replace('{P}', '<' + s.anchorPic + '>'));
+    }
+    blocks.forEach(function(b, bi){
+      if(open && bi===0) return;                       /* 开场动作块已输出 */
+      var txt = String(b.text||'').trim();
+      if(b.type==='action'){ if(txt) frag.push(txt); }
+      else if(b.type==='sound'){ if(txt) frag.push(txt); }
+      else if(b.type==='dialogue'){ if(b.who && b.content) frag.push(speakerBlock(b, smap)); }
+    });
+    if(s.onscreen) frag.push('画面可见文字 "' + s.onscreen + '"');
+    out.push(frag.join(' ').replace(/\s+/g,' ').trim());
+  });
+  return out.join('\n');
+}
+function instructionLine(){
+  var N = state.shots.length;
+  var D = duration2dp();
+  if(state.mode==='I2VA'){
+    return 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.';
+  }
+  if(state.mode==='FL2VA'){
+    return 'How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot ' + N + ') aligns with the ' + D + '-second mark of the target video.';
+  }
+  if(state.mode==='L2VA'){
+    return 'How the reference pictures align with the target video — <Picture 1> (from [Shot ' + N + ']) aligns with the ' + D + '-second mark of the target video.';
+  }
+  return '';
+}
+function shotsUsing(key){
+  var arr = [];
+  state.shots.forEach(function(s,i){ if(s.refs.indexOf(key)>=0) arr.push(i+1); });
+  return arr;
+}
+function buildSubjectDefinitions(){
+  return labelList().filter(function(L){ return !L.entry.inlineOnly; }).map(function(L){
+    return '<' + L.key + '> ' + (L.entry.def || '').trim();
+  }).join('\n');
+}
+function buildSummary(){
+  var types = TASK_TYPES.filter(function(t){ return state.fr.summaryTypes.indexOf(t)>=0; });
+  var s = '[' + types.join(' + ') + '] ';
+  if(types.indexOf('video editing')>=0){
+    var vids = labelList().filter(function(L){ return L.kind==='video'; });
+    var v = vids.length ? vids[0].key : 'Video 1';
+    s += 'The target video is an edited version of <' + v + '>. ';
+  }
+  s += state.fr.summaryText;
+  return s.trim();
+}
+function buildRetention(){
+  var lines = [];
+  labelList().forEach(function(L){
+    if(L.entry.inlineOnly) return;
+    var e = L.entry;
+    var note = (e.note||'').trim();
+    if(e.kind==='audio'){
+      lines.push('<' + L.key + '>: ' + e.marker + (note ? ' - ' + note : ''));
+      return;
+    }
+    var paren = '';
+    if(e.kind==='subject'){
+      var sh = shotsUsing(L.key);
+      paren = 'appears in ' + sh.map(function(n){ return '[Shot ' + n + ']'; }).join(', ');
+    }else if(e.kind==='picture'){
+      if(e.picRole==='first') paren = '[Shot ' + e.picShot + '] first frame';
+      else if(e.picRole==='last') paren = '[Shot ' + e.picShot + '] last frame';
+      else if(e.picRole==='key') paren = '[Shot ' + e.picShot + '] keyframe';
+      else paren = 'storyboard reference for [Shot ' + e.picShot + '], [Shot ' + e.picShotB + ']';
+    }else{
+      paren = e.videoParen || 'cut and pacing structure';
+    }
+    var t = '<' + L.key + '> (' + paren + '): ' + e.marker;
+    if(note) t += ' - ' + note;
+    lines.push(t);
+  });
+  return lines.join('\n');
+}
+function buildOutputText(){
+  var fr = (state.mode==='Full-Reference');
+  var shots = compileShots();
+  var snd = state.silent ? 'N/A' : (state.soundscape || '');
+  var mus = state.noMusic ? 'N/A' : (state.music || '');
+  if(!fr){
+    var head = instructionLine();
+    var body = 'integrated_multimodal_description: ' + shots
+      + '\n\noverall_soundscape: ' + snd
+      + '\n\nnon_diegetic_music: ' + mus;
+    return head ? (head + '\n\n' + body) : body;
+  }
+  return 'subject_definitions:\n' + buildSubjectDefinitions()
+    + '\n\nsummary:\n' + buildSummary()
+    + '\n\nretention_analysis:\n' + buildRetention()
+    + '\n\ndetailed_description:\n' + ((state.fr.styleLines||'').trim() ? (state.fr.styleLines.trim() + '\n') : '') + shots
+    + '\n\noverall_soundscape:\n' + snd
+    + '\n\nnon_diegetic_music:\n' + mus;
+}
+
+/* ══════════════════════ 校验 ══════════════════════ */
+function validate(){
+  var v = [];
+  var seenSpk = {};
+  var d = durationSec();
+  if(d===null || d<=0) v.push({l:'e',t:'总时长必填且必须大于 0（对齐指令与切点校验都要用）。'});
+  if(!state.shots.length) v.push({l:'e',t:'至少要有 1 个镜头。'});
+
+  state.shots.forEach(function(s,i){
+    if(i>0){
+      var t = parseTime(s.cutTime);
+      if(t===null) v.push({l:'e',t:'[Shot '+(i+1)+'] 切点时间未设置：请填写或使用均分助手后确认。'});
+      else{
+        if(s.cutState==='auto' && !s.cutConfirmed) v.push({l:'e',t:'[Shot '+(i+1)+'] 切点由均分助手填入，尚未确认。'});
+        var prev = parseTime(state.shots[i-1].cutTime);
+        if(prev!==null && t<=prev) v.push({l:'e',t:'[Shot '+(i+1)+'] 切点 '+fmtTime(t)+' 未严格大于 [Shot '+i+'] 的 '+fmtTime(prev)+'。'});
+        if(d!==null && t>=d) v.push({l:'e',t:'[Shot '+(i+1)+'] 切点 '+fmtTime(t)+' 超出总时长 '+duration2dp()+' 秒。'});
+      }
+    }
+    var blocks = s.blocks || [];
+    if(!blocks.some(function(b){ return b.type==='action' && String(b.text||'').trim(); })){
+      v.push({l:'w',t:'[Shot '+(i+1)+'] 没有任何动作/画面块内容。'});
+    }
+    blocks.forEach(function(b, bi){
+      var at = '[Shot '+(i+1)+'] 时间线块 #'+(bi+1);
+      if(b.type==='action'){
+        /* 可视觉化检查：只扫动作/画面块。台词块（含 who / identity / delivery / lang /
+           content / 画外设置 / <d> 内文本）与同期声块一律不扫——情绪词用在台词和音色描述里是合法的。 */
+        var raw = String(b.text||'');
+        if(raw){
+          var probe = raw;
+          VISUAL_EXCEPTIONS.forEach(function(p){ probe = probe.split(p).join(''); });
+          ABSTRACT_STATE_WORDS.forEach(function(w){
+            if(probe.indexOf(w)>=0){
+              v.push({l:'w',t:at+'：检测到抽象状态词“'+w+'”。建议用可观察的面部表情、视线、身体姿态、动作速度或力度来表现，而不是直接描述情绪。'});
+            }
+          });
+          VAGUE_MANNER_WORDS.forEach(function(w){
+            if(probe.indexOf(w)>=0){
+              v.push({l:'i',t:at+'：检测到含糊的方式表达“'+w+'”。可以保留；若需要更精确，可把物理动作写具体（幅度、力度、速度、接触点）。'});
+            }
+          });
+        }
+        return;
+      }
+      if(b.type!=='dialogue') return;
+      if(b.content && !b.who) v.push({l:'e',t:at+' 有台词但没有角色名，无法分配 (Sx)。'});
+      if(!b.content && b.who) v.push({l:'w',t:at+' 说话人「'+b.who+'」没有台词，该块会被忽略。'});
+      if(b.content && b.who && !seenSpk[b.who]){
+        seenSpk[b.who] = 1;
+        if(!(b.identity||'').trim()) v.push({l:'w',t:'说话人「'+b.who+'」首次发声时没有身份/音色描述，规范要求首次出现即建立稳定身份（base-en.txt:129）。'});
+      }
+      if(b.vo && b.scenetrans) v.push({l:'w',t:at+' 同时勾了画外音与跨切点延续，二者语义冲突，请确认。'});
+    });
+  });
+
+  if(!state.silent && !(state.soundscape||'').trim()) v.push({l:'e',t:'overall_soundscape 为空：只有用户明确要求全片静音时才可输出 N/A（base-en.txt:154）。'});
+  if(!state.noMusic && !(state.music||'').trim()) v.push({l:'e',t:'non_diegetic_music 为空：无配乐时请勾选「无观众向配乐」输出 N/A。'});
+
+  if(state.mode==='Full-Reference'){
+    if(!state.fr.refs.length) v.push({l:'e',t:'全参考模式至少要登记 1 条参考（Subject / Picture / Video / Audio）。'});
+    if(!state.fr.summaryTypes.length) v.push({l:'e',t:'summary 必须有方括号任务类型前缀（ref-en.txt:123）。'});
+    if(!(state.fr.summaryText||'').trim()) v.push({l:'e',t:'summary 段落为空。'});
+    if(!(state.fr.styleLines||'').trim()) v.push({l:'w',t:'detailed_description 的风格句为空（规范要求在 [Shot 1] 之前交代风格，ref-en.txt:230）。'});
+    labelList().forEach(function(L){
+      var e = L.entry;
+      if(e.inlineOnly) return;
+      if(!(e.def||'').trim()) v.push({l:'w',t:'<'+L.key+'> 定义正文为空（subject_definitions 需要逐条定义，ref-en.txt:37）。'});
+      if(L.kind==='subject' && !shotsUsing(L.key).length){
+        v.push({l:'e',t:'<'+L.key+'> 未在任何镜头标注出现，retention_analysis 的镜次无法生成。'});
+      }
+    });
+    var gen = state.fr.summaryTypes.indexOf('keyframe completion')>=0 || state.fr.summaryTypes.indexOf('reference generation')>=0;
+    if(gen){
+      var body = compileShots();
+      var wc = body.split(/\s+/).filter(Boolean).length;
+      if(wc < 350) v.push({l:'w',t:'detailed_description 约 '+wc+' 词，生成类任务规范建议 350–500 词（ref-en.txt:242）。'});
+    }
+  }else{
+    if(!state.styles.length) v.push({l:'w',t:'未选择视觉风格：规范要求在 [Shot 1] 开头交代风格（base-en.txt:78）。'});
+  }
+  return v;
+}
+
+/* ══════════════════════ 输出面板 ══════════════════════ */
+function updateValidate(){
+  var list = document.getElementById('vlist');
+  if(!list) return validate();
+  clear(list);
+  var v = validate();
+  v.forEach(function(x){ list.appendChild(h('li',{class:x.l==='e'?'e':(x.l==='w'?'w':'i'),text:(x.l==='e'?'阻断 · ':x.l==='w'?'提醒 · ':'提示 · ')+x.t})); });
+  return v;
+}
+function updateOutput(){
+  var out = document.getElementById('out');
+  if(out) out.textContent = buildOutputText();
+  var v = updateValidate();
+  var hasErr = v.some(function(x){ return x.l==='e'; });
+  var badge = document.getElementById('state-badge');
+  if(badge){
+    badge.className = 'pill ' + (hasErr?'err':'ok');
+    badge.textContent = hasErr ? '草稿 · 未通过校验（'+v.filter(function(x){return x.l==='e';}).length+' 项阻断）' : '可生成 · 校验通过';
+  }
+  ['copy','download'].forEach(function(id){
+    var b = document.getElementById(id);
+    if(b) b.disabled = hasErr;
+  });
+  return v;
+}
+function renderOutput(){
+  clear(panelOutput);
+  panelOutput.appendChild(h('h2',{},'输出',
+    h('span',{class:'src',text: state.mode==='Full-Reference' ? 'ref-en.txt:13-22 六段顺序' : 'base-en.txt:34-48 指令行 + 三核心字段'})));
+  panelOutput.appendChild(h('div',{class:'bar'},
+    h('span',{class:'pill',id:'state-badge',text:'—'}),
+    h('button',{class:'act primary',id:'copy',type:'button',onclick:function(){
+      var txt = buildOutputText();
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(function(){ flash('copy','已复制 ✓'); }, function(){ flash('copy','复制失败'); });
+      }else{
+        var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+        try{ document.execCommand('copy'); flash('copy','已复制 ✓'); }catch(e){ flash('copy','复制失败'); }
+        document.body.removeChild(ta);
+      }
+    }},'复制提示词'),
+    h('button',{class:'act',id:'download',type:'button',onclick:function(){
+      var blob = new Blob([buildOutputText()],{type:'text/plain;charset=utf-8'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'prompt-' + state.mode + '.txt';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }},'下载 .txt'),
+    h('button',{class:'act',type:'button',onclick:function(){
+      if(!confirm('清空当前全部输入？')) return;
+      state = defaultState(); try{ localStorage.removeItem(LS_KEY); }catch(e){}
+      renderAll();
+    }},'清空')
+  ));
+  panelOutput.appendChild(h('ul',{class:'vlist',id:'vlist'}));
+  panelOutput.appendChild(h('pre',{class:'out',id:'out'}));
+
+  var d = h('details',{class:'rules'});
+  d.appendChild(h('summary',{text:'中文书写版规则（点击展开）'}));
+  d.appendChild(h('div',{},
+    h('div',{},'保留英文（固定参数 / 语法）：字段名与 section 名、参考标签 ', h('code',{text:'<Subject N> <Picture N> <Video N> <Audio N>'}), '、', h('code',{text:'[Shot N]'}), '、', h('code',{text:'At MM:SS.mmm,'}), '、三条对齐指令整句、切法措辞、运镜词表、幅度速度、景别 output、', h('code',{text:'<d>[语言] …</d>'}), '、', h('code',{text:'<scenetrans> <cutoff> [unclear] N/A'}), '、说话人 ID ', h('code',{text:'(S1) (S1,S2)'}), '、任务类型与保留度标记、FR 固定句 ', h('code',{text:'The target video is an edited version of <Video 1>.'})),
+    h('div',{},'写中文（描述性内容）：画面/动作/环境/光线、参考定义正文、保留度说明、summary 段落、overall_soundscape、non_diegetic_music、风格句、说话人连接词（说道 / 以…的语气说道 / 画外说道 / 以画外音说道）。')
+  ));
+  panelOutput.appendChild(d);
+  panelOutput.appendChild(h('p',{class:'hint',text:'本工具完全离线运行，输入自动保存在浏览器本地（localStorage），不上传任何内容。'}));
+}
+function flash(id, msg){
+  var b = document.getElementById(id);
+  if(!b) return;
+  var old = b.textContent;
+  b.textContent = msg;
+  setTimeout(function(){ b.textContent = old; }, 1500);
+}
+
+/* ══════════════════════ 汇总渲染 ══════════════════════ */
+function renderAll(){
+  renderModeBar();
+  renderParams();
+  renderSound();
+  renderFr();
+  renderShots();
+  renderOutput();
+  updateOutput();
+}
+renderAll();
+})();
+</script>
+</body>
+</html>
